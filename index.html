@@ -59,7 +59,7 @@
             <div>
                 <h1 class="text-lg font-bold tracking-tight text-sky-400">⚡ BTC Futures Journal Pro</h1>
                 <div class="flex items-center gap-2 mt-0.5">
-                    <p class="text-[10px] text-zinc-500">V7.3 PWA | Real-Time PnL</p>
+                    <p class="text-[10px] text-zinc-500">V7.4 PWA | Real-Time PnL</p>
                     <span class="pwa-pill" id="pwa-badge">⚡ PWA</span>
                 </div>
             </div>
@@ -122,6 +122,15 @@
                 <div class="col-span-2"><span class="text-zinc-500">⚠️ Liquidation Price (Isolated):</span><span id="liquidation-price" class="text-yellow-400 font-bold ml-1">0 USDT</span></div>
                 <div class="col-span-2"><span class="text-zinc-500">💰 Position Size:</span><span id="position-size" class="text-sky-400 font-bold ml-1">0 USDT</span></div>
             </div>
+            
+            <div class="mt-3 p-2 bg-purple-950/20 border border-purple-500/20 rounded-lg text-[10px] hidden" id="confluence-sr-box">
+                <span class="text-purple-400 font-bold block mb-1">📐 DETEKSI KUNCI S/R (BINANCE 24H)</span>
+                <div class="grid grid-cols-2 gap-1 font-mono text-zinc-300">
+                    <div>Resistance: <span id="detected-res" class="text-red-300">$0</span></div>
+                    <div>Support: <span id="detected-sup" class="text-emerald-300">$0</span></div>
+                </div>
+            </div>
+
             <div class="mt-3 pt-3 border-t border-sky-500/20">
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-[9px] text-zinc-500 uppercase">📊 CONFIDENCE LEVEL</span>
@@ -287,24 +296,21 @@
     let logs = JSON.parse(localStorage.getItem('btc_logs_v13')) || [];
     let activeLevels = JSON.parse(localStorage.getItem('btc_active_levels_v4')) || { entry: '', sl: '', tp: '', rr: '', tradeValue: 1000, leverage: 10, confidence: 0, source: 'manual' };
     let btcPriceData = JSON.parse(localStorage.getItem('btc_price_data')) || { price: null, timestamp: null, source: 'none' };
+    
+    // Penyimpanan data S/R hasil fetch pasar latar belakang
+    let calculatedSR = { support: null, resistance: null };
 
     // ========== TAB NAVIGATION WITH LAZY LOADING SYSTEM ==========
     function switchTab(tabName) {
-        // 1. Sembunyikan semua page & reset navigasi tombol aktif
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
 
-        // 2. Aktifkan tab & tombol tujuan
         document.getElementById(`page-${tabName}`).classList.add('active');
         document.getElementById(`btn-nav-${tabName}`).classList.add('active');
 
-        // 3. Logika Lazy Loading untuk menjaga performa
         const chartContainer = document.getElementById('macro-chart-container');
         if (tabName === 'macro') {
-            // Jalankan pengambilan data API Fear & Greed saat tab macro dibuka
             getSentimentData();
-            
-            // Render widget Iframe TradingView secara aman ke dalam kontainer
             chartContainer.innerHTML = `
                 <div class="tradingview-widget-container" style="height:100%;width:100%">
                   <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=BINANCE%3ABTCUSDT.P&interval=D&hidesidetoolbar=1&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=%5B%5D&theme=dark&style=1&timezone=Asia%2FJakarta&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=id&utm_source=localhost&utm_medium=widget&utm_campaign=chart&utm_term=BINANCE%3ABTCUSDT.P" 
@@ -312,13 +318,11 @@
                 </div>
             `;
         } else {
-            // Ketika user keluar dari tab macro, hapus isi Iframe dari memory RAM agar aplikasi tidak lag
             if(chartContainer) {
                 chartContainer.innerHTML = '<p class="text-center text-xs text-zinc-500">Pilih tab Macro Chart untuk memuat chart otomatis...</p>';
             }
         }
 
-        // Pastikan render ulang data stream jika membuka tab AI Parser
         if (tabName === 'ai-parser') {
             renderTabs();
             renderLogs();
@@ -345,7 +349,6 @@
         }
     }
 
-    // Jam Sistem Dashboard Makro
     setInterval(() => {
         const clk = document.getElementById('live-clock');
         if(clk) clk.innerText = new Date().toLocaleString('id-ID');
@@ -471,6 +474,38 @@
     async function tryCoinGeckoREST() { const res=await fetchWithTimeout(fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'),4000); if(!res.ok) throw new Error(); const data=await res.json(); return data.bitcoin.usd; }
     async function tryKrakenREST() { const res=await fetchWithTimeout(fetch('https://api.kraken.com/0/public/Ticker?pair=XBTUSD'),4000); if(!res.ok) throw new Error(); const data=await res.json(); return parseFloat(data.result.XXBTZUSD.c[0]); }
 
+    // ========== IMPLEMENTASI BARU: FETCH DATA STRUKTUR PASAR 24 JAM UNTUK S/R ==========
+    async function fetchMarketStructureSR() {
+        try {
+            // Ambil data data statistik 24 jam terakhir dari Binance REST API
+            const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
+            if(!res.ok) return null;
+            const data = await res.json();
+            
+            const high = parseFloat(data.highPrice); // Harga Tertinggi 24 Jam (Sifat Resistance Alami)
+            const low = parseFloat(data.lowPrice);   // Harga Terendah 24 Jam (Sifat Support Alami)
+            const close = parseFloat(data.lastPrice);
+            
+            // Hitung Pivot Points klasik untuk S/R tambahan berbasis perhitungan matematika data pasar nyata
+            const pivot = (high + low + close) / 3;
+            const r1 = (2 * pivot) - low;
+            const s1 = (2 * pivot) - high;
+            
+            // Kita pakai R1 dan S1 sebagai level batas konfluensi terdekat
+            calculatedSR.resistance = r1;
+            calculatedSR.support = s1;
+            
+            // Tampilkan di UI Box S/R
+            document.getElementById('confluence-sr-box').classList.remove('hidden');
+            document.getElementById('detected-res').innerText = `$${r1.toFixed(1)}`;
+            document.getElementById('detected-sup').innerText = `$${s1.toFixed(1)}`;
+            return true;
+        } catch (e) {
+            console.error("Gagal melakukan kalkulasi background S/R data:", e);
+            return null;
+        }
+    }
+
     async function fetchBitcoinPriceWithFallback() {
         const btn = document.getElementById('btc-price-update-btn');
         const original = btn.innerHTML;
@@ -498,6 +533,10 @@
                 }
             } catch(e) { console.warn(src.name, e); }
         }
+        
+        // Panggil penarikan struktur data pasar S/R di latar belakang saat update harga
+        await fetchMarketStructureSR();
+
         if (!success) {
             if (btcPriceData.price && btcPriceData.timestamp && (Date.now() - btcPriceData.timestamp < 3600000)) {
                 updatePriceDisplayOnUI(btcPriceData.price, btcPriceData.source, btcPriceData.timestamp);
@@ -577,6 +616,107 @@
         uiUpdateConfidenceDisplay(val, "Diatur secara manual");
     });
 
+    // ========== PERBAIKAN FUNGSIONAL: ENGINE CROSSCHECK S/R PASAR OTOMATIS ==========
+    function analyzeConfluence() { 
+        const entry = parseFloat(document.getElementById('active-entry').value);
+        const sl = parseFloat(document.getElementById('active-sl').value);
+        const tp = parseFloat(document.getElementById('active-tp').value);
+        
+        if (isNaN(entry) || isNaN(sl) || isNaN(tp) || entry === 0) {
+            alert("⚠️ Harap isi level Entry, SL, dan TP terlebih dahulu untuk mencocokkan konfluensi!");
+            return;
+        }
+
+        if (!calculatedSR.support || !calculatedSR.resistance) {
+            alert("⏳ Data struktur bursa belum termuat. Klik tombol '🔄 Update' harga terlebih dahulu.");
+            return;
+        }
+
+        const isLong = entry > sl;
+        let score = 0;
+        let notes = [];
+
+        // Penilaian 1: Rasio Risk/Reward (Minimal ideal 1:1.5)
+        const rrMatch = document.getElementById('active-rr').value.match(/1 : ([\d.]+)/);
+        if (rrMatch && parseFloat(rrMatch[1]) >= 1.5) {
+            score += 30;
+            notes.push("Rasio R:R Bagus (≥ 1.5)");
+        } else {
+            notes.push("Rasio R:R kurang ideal (< 1.5)");
+        }
+
+        // Penilaian 2 & 3: Crosscheck Otomatis Matematika Entry ke S/R Riil Pasar Binance
+        if (isLong) {
+            // Posisi LONG aman jika entry dekat/di atas Support, dan TP berada sebelum/mendekati Resistance pasar
+            if (entry >= calculatedSR.support && entry <= calculatedSR.support * 1.02) {
+                score += 40; // Akurasi tinggi dekat support beli kuat
+                notes.push("Entry sangat presisi di area Pantulan Support");
+            } else if (entry > calculatedSR.support) {
+                score += 20;
+                notes.push("Entry berada di atas Support (Aman)");
+            } else {
+                notes.push("Peringatan: Entry di bawah lantai Support!");
+            }
+
+            if (tp <= calculatedSR.resistance) {
+                score += 30;
+                notes.push("Target TP rasional (Di bawah Resistance)");
+            }
+        } else {
+            // Posisi SHORT aman jika entry dekat/di bawah Resistance, dan TP berada sebelum lantai Support pasar
+            if (entry <= calculatedSR.resistance && entry >= calculatedSR.resistance * 0.98) {
+                score += 40;
+                notes.push("Entry sangat presisi di area Atap Resistance Short");
+            } else if (entry < calculatedSR.resistance) {
+                score += 20;
+                notes.push("Entry berada di bawah Resistance (Aman)");
+            } else {
+                notes.push("Peringatan: Entry berada di atas Resistance!");
+            }
+
+            if (tp >= calculatedSR.support) {
+                score += 30;
+                notes.push("Target TP rasional (Di atas Support)");
+            }
+        }
+
+        // Terapkan kalkulasi akhir ke UI Confidence Level secara dinamis
+        activeLevels.confidence = score;
+        activeLevels.source = 'confluence';
+        localStorage.setItem('btc_active_levels_v4', JSON.stringify(activeLevels));
+        
+        uiUpdateConfidenceDisplay(score, `Hasil Kalkulasi Konfluensi: ${notes.join(", ")}.`);
+        alert(`🎯 Analisis Selesai! Tingkat kecocokan rencana Anda dengan struktur chart riil saat ini adalah: ${score}%`);
+    }
+
+    function applyConfluenceLevels() { 
+        if (!calculatedSR.support || !calculatedSR.resistance) {
+            alert("⏳ Data chart S/R pasar belum siap. Klik tombol '🔄 Update' terlebih dahulu!");
+            return;
+        }
+        // Pasang rekomendasi setup instan otomatis berbasis S/R riil pasar yang terdeteksi
+        const currentPrice = btcPriceData.price || calculatedSR.support;
+        
+        document.getElementById('active-entry').value = Math.round(currentPrice);
+        document.getElementById('active-sl').value = Math.round(calculatedSR.support * 0.99); // 1% di bawah support
+        document.getElementById('active-tp').value = Math.round(calculatedSR.resistance);     // Pas di area target resistance
+        
+        calculateRiskReward();
+        calculateRiskManagement();
+        if(btcPriceData.price) updatePositionMonitoring(btcPriceData.price);
+        
+        alert("🔮 Rencana otomatis dipasang berdasarkan struktur bursa (Entry: Harga Live, SL: Di bawah Support, TP: Target Resistance)!");
+    }
+
+    function resetToManualMode() { 
+        document.getElementById('active-entry').value = '';
+        document.getElementById('active-sl').value = '';
+        document.getElementById('active-tp').value = '';
+        document.getElementById('active-rr').value = '1 : -';
+        uiUpdateConfidenceDisplay(0, "Kembali ke mode input manual");
+        alert("Mode dibersihkan kembali ke input manual."); 
+    }
+
     // PWA & Storage Dummy Functions agar kode sisa berjalan lancar
     function openChannelModal() { document.getElementById('channel-modal').style.display='flex'; }
     function closeChannelModal() { document.getElementById('channel-modal').style.display='none'; }
@@ -587,9 +727,6 @@
     function setEmotion(val) { document.getElementById('ct-emotion').value = val; alert(`Emosi diset ke: ${val}`); }
     function setJournalFilter(val) { alert(`Filter journal diubah ke: ${val}`); }
     function processAIInput() { alert("Mengolah data analisis teks AI..."); }
-    function analyzeConfluence() { alert("Menganalisis tingkat konfluensi sistem..."); }
-    function applyConfluenceLevels() { alert("Menerapkan level otomatis konfluensi..."); }
-    function resetToManualMode() { alert("Mode kembali ke level input manual..."); }
     function saveActiveLevels() { 
         activeLevels.entry = document.getElementById('active-entry').value;
         activeLevels.sl = document.getElementById('active-sl').value;
@@ -605,7 +742,6 @@
 
     // Jalankan inisialisasi awal saat aplikasi dibuka
     window.addEventListener('load', () => {
-        // Ambil data lokal jika ada
         if (activeLevels.entry) {
             document.getElementById('active-entry').value = activeLevels.entry;
             document.getElementById('active-sl').value = activeLevels.sl;
@@ -620,10 +756,8 @@
             updatePriceDisplayOnUI(btcPriceData.price, btcPriceData.source, btcPriceData.timestamp);
             updatePositionMonitoring(btcPriceData.price);
         }
-        // Auto fetch harga awal
         fetchBitcoinPriceWithFallback();
     });
 </script>
 </body>
 </html>
-
