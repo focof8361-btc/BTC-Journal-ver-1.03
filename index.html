@@ -466,8 +466,19 @@
             <option value="120">120 candle (~20 hr)</option>
           </select>
         </div>
+        
       </div>
-
+<div class="flex flex-col gap-1 mb-3">
+  <label class="text-xs text-zinc-400 font-medium">Konteks Elliott Wave (Opsional)</label>
+  <select id="sle-ew-context" class="w-full bg-zinc-900 text-zinc-200 text-xs rounded border border-zinc-700 p-2 focus:outline-none focus:border-yellow-500">
+    <option value="none">Standard Fibonacci (Tanpa Wave)</option>
+    <option value="w2">Mencari Ujung Wave 2 (Koreksi dari Wave 1)</option>
+    <option value="w3">Mencari Target Wave 3 (Impulse Terkuat)</option>
+    <option value="w4">Mencari Ujung Wave 4 (Koreksi Dangkal)</option>
+    <option value="w5">Mencari Target Wave 5 (Final Move)</option>
+  </select>
+</div>
+      
       <!-- Status / loading area -->
       <div id="sle-status" class="px-4 pb-3 text-[10px] text-zinc-500 italic hidden">
         <span class="sle-spinner"></span>Mengambil data OHLCV dari Binance...
@@ -2056,9 +2067,76 @@
     resultEl.classList.add('hidden');
 
     try {
+      // 1. Ambil nilai konteks dari elemen UI baru (taruh di bagian atas fungsi runSmartLevels)
+const ewContext = document.getElementById('sle-ew-context')?.value || 'none';
       const lookback  = parseInt(getEl('sle-lookback').value);
       const dirPref   = getEl('sle-direction').value;
+// 1. Ambil nilai konteks dari elemen UI baru (taruh di bagian atas fungsi runSmartLevels)
+const ewContext = document.getElementById('sle-ew-context')?.value || 'none';
 
+// ... (Biarkan kode pengambilan data fetch dan pencarian Swing High/Low tetap berjalan seperti biasa) ...
+// Misal variabel swing high Anda adalah 'highPrice' dan swing low adalah 'lowPrice'
+// Rentang harga (range) = highPrice - lowPrice
+const priceRange = highPrice - lowPrice; 
+
+// 2. Tambahkan Logika Analisis Elliott Wave Kustom
+let ewAnalysisHTML = '';
+
+if (ewContext !== 'none') {
+  let targetTips = '';
+  let specificLevels = '';
+
+  switch (ewContext) {
+    case 'w2':
+      // Wave 2 biasanya retrace ke 50% - 61.8% dari Wave 1
+      const w2Min = highPrice - (priceRange * 0.618);
+      const w2Max = highPrice - (priceRange * 0.500);
+      targetTips = "Wave 2 idealnya memantul di area Golden Ratio Fibonacci Retracement (0.5 - 0.618). Pastikan harga tidak menembus titik awal Wave 1 (titik Low saat ini).";
+      specificLevels = `Zona Pantul Ideal: <span class="text-yellow-400 font-bold">$${w2Min.toFixed(2)} - $${w2Max.toFixed(2)}</span>`;
+      break;
+
+    case 'w3':
+      // Wave 3 biasanya ekstensi 1.618 dari panjang Wave 1
+      const w3Target = lowPrice + (priceRange * 1.618);
+      targetTips = "Wave 3 adalah gelombang terpanjang dan terkuat. Target minimum ekstensinya berada di rasio 1.618 Fibonacci.";
+      specificLevels = `Target Profit (TP) Wave 3: <span class="text-green-400 font-bold">$${w3Target.toFixed(2)} (161.8%)</span>`;
+      break;
+
+    case 'w4':
+      // Wave 4 biasanya koreksi dangkal di 23.6% - 38.2% dari Wave 3
+      const w4Min = highPrice - (priceRange * 0.382);
+      const w4Max = highPrice - (priceRange * 0.236);
+      targetTips = "Wave 4 umumnya berupa koreksi sampingan (sideways) yang dangkal. Aturan mutlak: Atap Wave 4 tidak boleh masuk ke area harga Wave 1 (area Low saat ini).";
+      specificLevels = `Zona Serap (Buy) Wave 4: <span class="text-yellow-400 font-bold">$${w4Min.toFixed(2)} - $${w4Max.toFixed(2)}</span>`;
+      break;
+
+    case 'w5':
+      // Wave 5 sering kali sama panjang dengan Wave 1 (100% projection) atau 61.8% dari jarak Wave 1 ke 3
+      const w5Target = highPrice + (priceRange * 0.618);
+      targetTips = "Wave 5 merupakan akhir dari siklus tren naik. Waspadai pembalikan arah besar (reversal) setelah target terpenuhi.";
+      specificLevels = `Estimasi Puncak Wave 5: <span class="text-red-400 font-bold">$${w5Target.toFixed(2)}</span>`;
+      break;
+  }
+
+  // Bungkus ke dalam desain card Tailwind
+  ewAnalysisHTML = `
+    <div class="mt-4 p-3 bg-zinc-900 rounded border border-zinc-800 text-xs">
+      <div class="flex items-center gap-1.5 text-yellow-500 font-bold uppercase tracking-wider mb-1">
+        <span>🌊 Elliott Wave Guided Target</span>
+      </div>
+      <p class="text-zinc-300 font-semibold mb-2">${specificLevels}</p>
+      <p class="text-zinc-400 leading-relaxed">${targetTips}</p>
+    </div>
+  `;
+}
+
+// 3. Tampilkan ke UI hasil analisis Anda
+// Gabungkan ewAnalysisHTML ini ke dalam kontainer tempat Anda mencetak teks hasil Smart Levels
+const containerHasil = document.getElementById('sle-results-container'); // sesuaikan dengan ID penampung hasil di html Anda
+if (containerHasil) {
+  // Anda bisa melakukan append atau menyisipkannya ke innerHTML yang sudah ada
+  containerHasil.innerHTML += ewAnalysisHTML;
+}
       sleSetStatus('Mengambil data Daily (EMA bias)...');
       const daily = await sleFetchOHLCV('1d', Math.max(lookback, 200));
 
