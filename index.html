@@ -2057,16 +2057,6 @@
 
     try {
       const lookback  = parseInt(getEl('sle-lookback').value);
-      <div class="flex flex-col gap-1 mb-3">
-  <label class="text-xs text-zinc-400 font-medium">Konteks Elliott Wave (Opsional)</label>
-  <select id="sle-ew-context" class="w-full bg-zinc-900 text-zinc-200 text-xs rounded border border-zinc-700 p-2 focus:outline-none focus:border-yellow-500">
-    <option value="none">Standard Fibonacci (Tanpa Wave)</option>
-    <option value="w2">Mencari Ujung Wave 2 (Koreksi dari Wave 1)</option>
-    <option value="w3">Mencari Target Wave 3 (Impulse Terkuat)</option>
-    <option value="w4">Mencari Ujung Wave 4 (Koreksi Dangkal)</option>
-    <option value="w5">Mencari Target Wave 5 (Final Move)</option>
-  </select>
-</div>
       const dirPref   = getEl('sle-direction').value;
 
       sleSetStatus('Mengambil data Daily (EMA bias)...');
