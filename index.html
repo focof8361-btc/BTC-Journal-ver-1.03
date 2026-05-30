@@ -2063,7 +2063,7 @@
       const daily = await sleFetchOHLCV('1d', Math.max(lookback, 200));
 
       sleSetStatus('Mengambil data 4H (entry + indikator)...');
-      const h4 = await sleFetchOHLCV('4h', Math.max(lookback * 6, 400));
+      const h4 = await sleFetchOHLCV('4h', Math.max(lookback * 6, 410));
 
       sleSetStatus('Menghitung indikator...');
 
